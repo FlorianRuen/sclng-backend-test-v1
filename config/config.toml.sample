@@ -3,6 +3,11 @@
     # Default value = "5000"
     # ListenPort = "5000"
 
+[TASKS]
+    # Number of tasks allowed in same time when fetching repository languages
+    # Default value = 8
+    # MaxParallelTasksAllowed = 8
+
 [LOGS]
     # Specific for application logs
     # Available values are: error, warn, info, debug

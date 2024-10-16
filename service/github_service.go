@@ -2,17 +2,21 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/Scalingo/sclng-backend-test-v1/config"
+	"github.com/Scalingo/sclng-backend-test-v1/model"
 	"github.com/gin-gonic/gin"
 	"github.com/google/go-github/v66/github"
+
+	"github.com/remeh/sizedwaitgroup"
+	log "github.com/sirupsen/logrus"
 )
 
 type GithubService interface {
-	FetchLastHundredRepositories(ctx *gin.Context) ([]string, error)
+	FetchLastHundredRepositories(ctx *gin.Context) ([]model.GithubRepository, error)
+	GetRepositoriesLanguages(repos []model.GithubRepository) error
+	FetchLanguagesForSingleRepository(r model.GithubRepository, swg *sizedwaitgroup.SizedWaitGroup, ch chan<- model.GithubRepositoryLanguages) error
 }
 
 type githubService struct {
@@ -27,17 +31,12 @@ func NewGithubService(config config.Config) GithubService {
 	}
 }
 
-func (s githubService) FetchLastHundredRepositories(c *gin.Context) ([]string, error) {
-
-	// TODO: test if using search instead of ListAll, we can get 100 repositories in one time
-	// TODO: because listAll will require to browse multiple pages to fetch the latest 100
-	// create search filter
-	t := time.Now().Format(time.RFC3339)
-
+func (s githubService) FetchLastHundredRepositories(c *gin.Context) ([]model.GithubRepository, error) {
 	repos, _, err := s.githubClient.Search.Repositories(
 		context.Background(),
-		"created:<"+t,
+		"is:public",
 		&github.SearchOptions{
+			Sort: "updated",
 			ListOptions: github.ListOptions{
 				Page:    1,
 				PerPage: 100,
@@ -45,22 +44,96 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context) ([]string, e
 		},
 	)
 
-	// TODO: add logger for error in this block
 	if err != nil {
-		return []string{}, err
+		log.WithError(err).Error("unable to get last hundred repositories")
+		return []model.GithubRepository{}, err
 	}
 
-	fmt.Println(*repos.Total)
-	// JsonPrettyPrint(repos.Repositories)
-	return []string{}, nil
+	// build output format for each repo
+	repositoriesAggregated := make([]model.GithubRepository, 0)
+
+	for _, r := range repos.Repositories {
+
+		if r == nil || r.FullName == nil || r.Owner == nil || r.Owner.Login == nil || r.Name == nil || r.LanguagesURL == nil {
+			return []model.GithubRepository{}, fmt.Errorf("invalid repository found")
+		}
+
+		repositoryAggregated := model.GithubRepository{
+			ID:           *r.ID,
+			FullName:     *r.FullName,
+			Owner:        *r.Owner.Login,
+			Repository:   *r.Name,
+			LanguagesUrl: *r.LanguagesURL,
+		}
+
+		// extract licence info
+		// licence can be null or empty for some repositories
+		if r.License != nil {
+			repositoryAggregated.Licence = r.License.Key
+		}
+
+		// TODO: for licence filtering, skip append step if current licence doesn't match the filter
+		repositoriesAggregated = append(repositoriesAggregated, repositoryAggregated)
+	}
+
+	// aggregate and fetch the languages used for each repo using goroutines
+	err = s.GetRepositoriesLanguages(repositoriesAggregated)
+
+	if err != nil {
+		log.WithError(err).Error("unable to get repositories languages")
+		return []model.GithubRepository{}, err
+	}
+
+	return repositoriesAggregated, nil
 }
 
-func JsonPrettyPrint(data interface{}) {
-	b, err := json.MarshalIndent(data, "", "  ")
+// getRepositoriesLanguages will fetch the languages used for each repository in parameters
+// this function use wait groups to parallelize the requests for each repository
+func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) error {
 
-	if err != nil {
-		fmt.Println(err)
+	// create a group to wait for all goroutines to finish
+	swg := sizedwaitgroup.New(s.config.Tasks.MaxParallelTasksAllowed)
+
+	// create a channel to collect response for all repositories in an map
+	// the map contain the repository ID as key and languages as value
+	// we will assign together when all tasks are finished
+	results := make(chan model.GithubRepositoryLanguages, len(repos))
+
+	for _, r := range repos {
+		swg.Add()
+		go s.FetchLanguagesForSingleRepository(r, &swg, results)
 	}
 
-	fmt.Println(string(b))
+	// wait for all tasks to be finished
+	swg.Wait()
+
+	// close the channel
+	close(results)
+
+	// TODO: instead of print, match the ID and build a DTO with repository details and languages
+	// TODO: we will return this array for filtering in parent function
+	// TODO: handle rate limiting, because to get 100 repositories, we are faciing 403 rate limiting errors from Github
+	for result := range results {
+		fmt.Printf("Repository ID %d utilise les languages : %v\n", result.RepositoryID, result.Languages)
+	}
+
+	return nil
+}
+
+func (s githubService) FetchLanguagesForSingleRepository(r model.GithubRepository, swg *sizedwaitgroup.SizedWaitGroup, ch chan<- model.GithubRepositoryLanguages) error {
+	defer swg.Done()
+
+	res, _, err := s.githubClient.Repositories.ListLanguages(
+		context.Background(),
+		r.Owner,
+		r.Repository,
+	)
+
+	if err != nil {
+		log.WithError(err).Error("unable to get repositories languages")
+		return err
+	}
+
+	ch <- model.GithubRepositoryLanguages{RepositoryID: r.ID, Languages: res}
+	return nil
 }

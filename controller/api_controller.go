@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"fmt"
+	"net/http"
 
 	"github.com/Scalingo/sclng-backend-test-v1/config"
 	"github.com/Scalingo/sclng-backend-test-v1/service"
@@ -25,9 +25,13 @@ func NewApiController(config config.Config, service service.GithubService) APICo
 }
 
 func (s apiController) GetRepositories(c *gin.Context) {
-	fmt.Println("GetRepositories")
 	repos, err := s.githubService.FetchLastHundredRepositories(c)
 
-	fmt.Println(repos)
-	fmt.Println(err)
+	// TODO: return with uniformized error format, maybe using library or custom func ?
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, repos)
 }

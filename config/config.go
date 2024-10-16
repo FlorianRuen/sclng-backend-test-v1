@@ -10,12 +10,17 @@ import (
 
 // config structure
 type Config struct {
-	API  APIConfig  `mapstructure:"API"`
-	Logs LogsConfig `mapstructure:"LOGS"`
+	API   APIConfig   `mapstructure:"API"`
+	Tasks TasksConfig `mapstructure:"TASKS"`
+	Logs  LogsConfig  `mapstructure:"LOGS"`
 }
 
 type APIConfig struct {
 	ListenPort string `mapstructure:"ListenPort"`
+}
+
+type TasksConfig struct {
+	MaxParallelTasksAllowed int `mapstructure:"MaxParallelTasksAllowed"`
 }
 
 type LogsConfig struct {
@@ -58,6 +63,9 @@ func GetDefault() *Config {
 	return &Config{
 		API: APIConfig{
 			ListenPort: "5000",
+		},
+		Tasks: TasksConfig{
+			MaxParallelTasksAllowed: 8,
 		},
 		Logs: LogsConfig{
 			Level:            "debug",
