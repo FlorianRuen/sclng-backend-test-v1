@@ -23,6 +23,7 @@ func main() {
 	}
 
 	// setup handlers and services
+
 	githubService := service.NewGithubService(*cfg)
 	apiController := controller.NewApiController(*cfg, githubService)
 
