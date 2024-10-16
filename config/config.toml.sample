@@ -1,0 +1,14 @@
+[API]
+    # Port on which this service runs
+    # Default value = "5000"
+    # ListenPort = "5000"
+
+[LOGS]
+    # Specific for application logs
+    # Available values are: error, warn, info, debug
+    # Default value = "debug"
+    # Level = "debug"
+
+    # Display every logs in JSON format, useful when using a log parser such as Loki
+    # Default value = false
+    # OutputLogsAsJson = false

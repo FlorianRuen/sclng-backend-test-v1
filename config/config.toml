@@ -1,0 +1,6 @@
+[API]
+    ListenPort = 5000
+    
+[LOGS]
+    Level = "debug"
+    OutputLogsAsJson = false
