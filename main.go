@@ -1,48 +1,82 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/Scalingo/go-handlers"
-	"github.com/Scalingo/go-utils/logger"
+	"github.com/Scalingo/sclng-backend-test-v1/config"
+	"github.com/Scalingo/sclng-backend-test-v1/controller"
+	"github.com/Scalingo/sclng-backend-test-v1/service"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 func main() {
-	log := logger.Default()
-	log.Info("Initializing app")
-	cfg, err := newConfig()
+	cfg, err := config.Load()
 	if err != nil {
-		log.WithError(err).Error("Fail to initialize configuration")
-		os.Exit(1)
+		log.WithError(err).Error("unable to load configuration")
 	}
 
-	log.Info("Initializing routes")
-	router := handlers.NewRouter(log)
-	router.HandleFunc("/ping", pongHandler)
-	// Initialize web server and configure the following routes:
-	// GET /repos
-	// GET /stats
+	// setup handlers and services
+	githubService := service.NewGithubService(*cfg)
+	apiController := controller.NewApiController(*cfg, githubService)
 
-	log = log.WithField("port", cfg.Port)
-	log.Info("Listening...")
-	err = http.ListenAndServe(fmt.Sprintf(":%d", cfg.Port), router)
-	if err != nil {
-		log.WithError(err).Error("Fail to listen to the given port")
-		os.Exit(2)
+	// setup server and define all routes
+	router := gin.New()
+
+	server := &http.Server{
+		Addr:    ":" + cfg.API.ListenPort,
+		Handler: router,
 	}
-}
 
-func pongHandler(w http.ResponseWriter, r *http.Request, _ map[string]string) error {
-	log := logger.Get(r.Context())
-	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	router.Use(
+		cors.New(cors.Config{
+			AllowOrigins: []string{"*"},
+			AllowMethods: []string{"GET"},
+			AllowHeaders: []string{"Content-Type, Content-Length, Accept-Encoding, Host, accept, Origin, Cache-Control, X-Requested-With"},
+			MaxAge:       12 * time.Hour,
+		}),
+	)
 
-	err := json.NewEncoder(w).Encode(map[string]string{"status": "pong"})
-	if err != nil {
-		log.WithError(err).Error("Fail to encode JSON")
+	api := router.Group("")
+	{
+		api.GET("/repos", apiController.GetRepositories)
 	}
-	return nil
+
+	// start with configuration
+	go func() {
+		log.Info("server listening on port " + cfg.API.ListenPort)
+
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.WithError(err).Error("error while starting server")
+		}
+
+	}()
+
+	// create context with 15 seconds timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// wait for interrupt signal to gracefully shut down the server with a timeout of 15 seconds.
+	// context is used to inform the server it has 5 seconds to finish the request it is currently handling
+	// kill default send syscall.SIGTERM
+	// kill -2 is syscall.SIGINT
+	quit := make(chan os.Signal, 1)
+
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	// Do some actions here : close DB connections, ...
+	log.Info("SIGINT, SIGTERM received, will shut down server ...")
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.WithError(err).Error("Server forced to shutdown")
+	} else {
+		log.Info("Application stopped gracefully !")
+	}
 }
