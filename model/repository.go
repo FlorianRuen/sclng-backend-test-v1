@@ -5,8 +5,8 @@ type GithubRepository struct {
 	FullName         string         `json:"fullName"`
 	Owner            string         `json:"owner"`
 	Repository       string         `json:"repository"`
-	Licence          *string        `json:"licence,omitempty"` // licence can be nil for some repositories without licence
-	MostUsedLanguage *string         `json:"-"`
+	Licence          string         `json:"licence"` // licence can be nil, will contains empty string
+	MostUsedLanguage *string        `json:"-"`
 	Languages        map[string]int `json:"languages"`
 }
 

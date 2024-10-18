@@ -17,18 +17,17 @@ import (
 )
 
 type GithubService interface {
-	IsRateLimitReached() bool
+	IsRateLimitReached() error
 
-	FetchLastHundredRepositories(ctx *gin.Context) ([]model.GithubRepository, error)
+	FetchLastHundredRepositories(ctx *gin.Context, seachQuery model.SearchQuery) ([]model.GithubRepository, error)
 	GetRepositoriesLanguages(repos []model.GithubRepository) ([]model.GithubRepository, error)
 	FetchLanguagesForSingleRepository(r model.GithubRepository, swg *sizedwaitgroup.SizedWaitGroup, ch chan<- model.GithubRepositoryLanguages) error
 }
 
 type githubService struct {
-	githubClient                 *github.Client
-	githubRateLimiter            *rate.Limiter
-	githubRateLimiterReservation *rate.Reservation
-	config                       config.Config
+	githubClient      *github.Client
+	githubRateLimiter *rate.Limiter
+	config            config.Config
 }
 
 // we have two github request with different rate limit
@@ -37,31 +36,38 @@ type githubService struct {
 // Search = 30 calls per minute = 1800 calls per hour
 func NewGithubService(config config.Config) GithubService {
 	return githubService{
-		githubClient:                 github.NewClient(nil),
-		githubRateLimiter:            rate.NewLimiter(rate.Every(time.Hour), 60),
-		githubRateLimiterReservation: nil,
-		config:                       config,
+		githubClient:      github.NewClient(nil),
+		githubRateLimiter: rate.NewLimiter(rate.Every(time.Hour), 60),
+		config:            config,
 	}
 }
 
-func (s githubService) IsRateLimitReached() bool {
-	if s.githubRateLimiterReservation == nil || s.githubRateLimiterReservation.Delay() <= 0 {
-		return false
+// TODO: improvement idea can be to return the time when a new request will be available
+func (s githubService) IsRateLimitReached() error {
+	if !s.githubRateLimiter.Allow() {
+		err := fmt.Errorf("rate limit reached, please retry later.")
+		log.WithError(err).Warning("the Github rate limit has been reached. Use a token or wait until the limit reset")
+		return err
 	}
 
-	return true
+	return nil
 }
 
-func (s githubService) FetchLastHundredRepositories(c *gin.Context) ([]model.GithubRepository, error) {
-	if s.IsRateLimitReached() {
-		return []model.GithubRepository{}, fmt.Errorf("rate limit reached")
+func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery model.SearchQuery) ([]model.GithubRepository, error) {
+	err := s.IsRateLimitReached()
+	if err != nil {
+		return []model.GithubRepository{}, err
 	}
 
+	// search repositories that match the query filters
+	// using this we can limit the number of results directly using Github search API
+	// this will limit the number of loops required to filter afterwards
 	repos, _, err := s.githubClient.Search.Repositories(
 		context.Background(),
-		"is:public",
+		seachQuery.ToGithubQuery(true),
 		&github.SearchOptions{
-			Sort: "updated",
+			Sort:  "created",
+			Order: "desc",
 			ListOptions: github.ListOptions{
 				Page:    1,
 				PerPage: 100,
@@ -69,7 +75,18 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context) ([]model.Git
 		},
 	)
 
+	// handle error
+	// if error is because we reach rate limit, consume all tokens from rate limiter to stop now
 	if err != nil {
+		if _, ok := err.(*github.RateLimitError); ok {
+			if !s.githubRateLimiter.AllowN(time.Now(), s.githubRateLimiter.Burst()) {
+				return []model.GithubRepository{}, fmt.Errorf("failed to consume all tokens")
+			}
+
+			log.WithError(err).Warning("github rate limit reached")
+			return []model.GithubRepository{}, err
+		}
+
 		log.WithError(err).Error("unable to get last hundred repositories")
 		return []model.GithubRepository{}, err
 	}
@@ -94,10 +111,9 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context) ([]model.Git
 		// extract licence info
 		// licence can be null or empty for some repositories
 		if r.License != nil {
-			repositoryAggregated.Licence = r.License.Key
+			repositoryAggregated.Licence = r.License.GetKey()
 		}
 
-		// TODO: for licence filtering, skip append step if current licence doesn't match the filter
 		repositoriesAggregated = append(repositoriesAggregated, repositoryAggregated)
 	}
 
@@ -126,7 +142,7 @@ func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) 
 
 	for _, r := range repos {
 		swg.Add()
-		s.githubRateLimiterReservation = s.githubRateLimiter.Reserve()
+
 		go s.FetchLanguagesForSingleRepository(r, &swg, results)
 	}
 
@@ -156,8 +172,9 @@ func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) 
 func (s githubService) FetchLanguagesForSingleRepository(r model.GithubRepository, swg *sizedwaitgroup.SizedWaitGroup, ch chan<- model.GithubRepositoryLanguages) error {
 	defer swg.Done()
 
-	if s.IsRateLimitReached() {
-		return fmt.Errorf("rate limit reached")
+	err := s.IsRateLimitReached()
+	if err != nil {
+		return err
 	}
 
 	// to avoid to many requests for nothing
@@ -170,15 +187,24 @@ func (s githubService) FetchLanguagesForSingleRepository(r model.GithubRepositor
 		return nil
 	}
 
-	s.githubRateLimiterReservation = s.githubRateLimiter.Reserve()
-
 	res, _, err := s.githubClient.Repositories.ListLanguages(
 		context.Background(),
 		r.Owner,
 		r.Repository,
 	)
 
+	// handle error
+	// if error is because we reach rate limit, consume all tokens from rate limiter to stop now
 	if err != nil {
+		if _, ok := err.(*github.RateLimitError); ok {
+			if !s.githubRateLimiter.AllowN(time.Now(), s.githubRateLimiter.Burst()) {
+				return fmt.Errorf("failed to consume all tokens")
+			}
+
+			log.WithError(err).Warning("github rate limit reached")
+			return err
+		}
+
 		log.WithError(err).Error("unable to get repositories languages")
 		return err
 	}

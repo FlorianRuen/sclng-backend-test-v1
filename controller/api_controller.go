@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/Scalingo/sclng-backend-test-v1/config"
+	"github.com/Scalingo/sclng-backend-test-v1/model"
 	"github.com/Scalingo/sclng-backend-test-v1/service"
 	"github.com/gin-gonic/gin"
 )
@@ -25,11 +26,16 @@ func NewApiController(config config.Config, service service.GithubService) APICo
 }
 
 func (s apiController) GetRepositories(c *gin.Context) {
-	repos, err := s.githubService.FetchLastHundredRepositories(c)
-
-	// TODO: return with uniformized error format, maybe using library or custom func ?
-	if err != nil {
+	var searchQuery model.SearchQuery
+	if err := c.ShouldBindQuery(&searchQuery); err != nil {
 		c.JSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	// execute the request
+	repos, err := s.githubService.FetchLastHundredRepositories(c, searchQuery)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, model.NewAPIError(err))
 		return
 	}
 
