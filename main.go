@@ -10,6 +10,7 @@ import (
 
 	"github.com/Scalingo/sclng-backend-test-v1/config"
 	"github.com/Scalingo/sclng-backend-test-v1/controller"
+	"github.com/Scalingo/sclng-backend-test-v1/logger"
 	"github.com/Scalingo/sclng-backend-test-v1/service"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -22,12 +23,15 @@ func main() {
 		log.WithError(err).Error("unable to load configuration")
 	}
 
-	// setup handlers and services
+	// configure logger
+	logger.Setup(*cfg)
 
+	// setup handlers and services
 	githubService := service.NewGithubService(*cfg)
 	apiController := controller.NewApiController(*cfg, githubService)
 
 	// setup server and define all routes
+	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
 	server := &http.Server{

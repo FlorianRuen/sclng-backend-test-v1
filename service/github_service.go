@@ -38,14 +38,22 @@ func NewGithubService(config config.Config) GithubService {
 	githubClient := github.NewClient(nil)
 
 	if config.Github.Token != "" {
+		log.Debug("will setup github client with authorization token")
 		githubClient = githubClient.WithAuthToken(config.Github.Token)
 	}
 
 	// execute request to get the rate limit available. We will configure a local rate limiter
+	log.Debug("loading current rate limit from github")
 	rateLimits, _, err := githubClient.RateLimit.Get(context.Background())
 	if err != nil {
 		log.WithError(err).Panic("unable to load current github rate limits")
 	}
+
+	log.WithFields(log.Fields{
+		"totalAvailable":    rateLimits.Core.Limit,
+		"remainingRequests": rateLimits.Core.Remaining,
+		"resetOn":           rateLimits.Core.Reset,
+	}).Debug("will setup local rate limiter with rate limits infos from github")
 
 	// setup rate limiter
 	// consume X tokens according to the number of remaining tokens
@@ -69,6 +77,12 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 		log.WithError(err).Warning("the Github rate limit has been reached. Use a token or wait until the limit reset")
 		return []model.GithubRepository{}, err
 	}
+
+	log.WithFields(log.Fields{
+		"owner":    seachQuery.Owner,
+		"licence":  seachQuery.License,
+		"language": seachQuery.Language,
+	}).Info("fetch last 100 repositories from github with filters")
 
 	// search repositories that match the query filters
 	// using this we can limit the number of results directly using Github search API
@@ -96,6 +110,10 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 	for _, r := range repos.Repositories {
 
 		if r == nil || r.FullName == nil || r.Owner == nil || r.Owner.Login == nil || r.Name == nil || r.LanguagesURL == nil {
+			log.WithFields(log.Fields{
+				"repositoryID": r.ID,
+			}).Debug("repository found with invalid information. skipped")
+
 			return []model.GithubRepository{}, fmt.Errorf("invalid repository found")
 		}
 
@@ -134,6 +152,10 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 		return []model.GithubRepository{}, fmt.Errorf("not enought requests to load languages for all repositories")
 	}
 
+	log.WithFields(log.Fields{
+		"numberOfRepositories": reposWithLanguagesToLoad,
+	}).Debug("will load languages from all repositories found with main language available")
+
 	// aggregate and fetch the languages used for each repo using goroutines
 	repositoriesAggregated, err = s.GetRepositoriesLanguages(repositoriesAggregated)
 
@@ -165,6 +187,10 @@ func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) 
 		// if not, the ListLanguages willl return nil (or empty) and we can avoid executing the request
 		// this will save some requests regarding to the rate limit
 		if r.MostUsedLanguage == nil {
+			log.WithFields(log.Fields{
+				"repositoryID": r.ID,
+			}).Debug("repository without most used language. skipped from loading languages list")
+
 			results <- model.GithubRepositoryLanguages{RepositoryID: r.ID, Languages: map[string]int{}}
 		} else {
 			swg.Add()
@@ -173,7 +199,9 @@ func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) 
 	}
 
 	// wait for all tasks to be finished
+	log.Debug("waiting for all threads for loading repositories to be finished")
 	swg.Wait()
+	log.Debug("all threads for loading repositories languages finished")
 
 	// close the channel
 	close(results)
@@ -201,6 +229,11 @@ func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) 
 // note: take care if you call this function from another function
 func (s githubService) FetchLanguagesForSingleRepository(r model.GithubRepository, swg *sizedwaitgroup.SizedWaitGroup, ch chan<- model.GithubRepositoryLanguages) error {
 	defer swg.Done()
+
+	log.WithFields(log.Fields{
+		"repositoryID":     r.ID,
+		"mostUsedLanguage": r.MostUsedLanguage,
+	}).Debug("fetch languages for repository")
 
 	res, _, err := s.githubClient.Repositories.ListLanguages(
 		context.Background(),
