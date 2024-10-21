@@ -1,0 +1,26 @@
+[API]
+    # Port on which this service runs
+    # Default value = "5000"
+    # ListenPort = "5000"
+
+[TASKS]
+    # Number of tasks allowed in same time when fetching repository languages
+    # Default value = 20
+    # MaxParallelTasksAllowed = 20
+
+[GITHUB]
+    # Github token to increase the rate limit for API requests
+    # Non authenticated requests = 60 calls / hour
+    # Authenticated requests = 5000 calls / hour
+    # Default value = ""
+    # Token = ""
+
+[LOGS]
+    # Specific for application logs
+    # Available values are: error, warn, info, debug
+    # Default value = "debug"
+    # Level = "debug"
+
+    # Display every logs in JSON format, useful when using a log parser such as Loki
+    # Default value = false
+    # OutputLogsAsJSON = false
