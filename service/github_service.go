@@ -51,9 +51,10 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 		"language": seachQuery.Language,
 	}).Info("fetch last 100 repositories from github with filters")
 
-	// search repositories that match the query filters
-	// using this we can limit the number of results directly using Github search API
-	// this will limit the number of loops required to filter afterwards
+	// Search repositories that match the specified query filters.
+	// By applying filters directly in the GitHub Search API, we can reduce the
+	// number of results returned, minimizing the need for additional filtering
+	// and processing after retrieval. This optimizes performance and reduces unnecessary iterations.
 	repos, _, err := s.githubClient.Search.Repositories(
 		context.Background(),
 		seachQuery.ToGithubQuery(true),
@@ -71,7 +72,7 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 		return []model.GithubRepository{}, fmt.Errorf("FETCH_ERROR")
 	}
 
-	// build output format for each repo
+	// Construct the output format for each repository.
 	repositoriesAggregated := make([]model.GithubRepository, 0)
 
 	for _, r := range repos.Repositories {
@@ -92,18 +93,19 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 			MostUsedLanguage: r.Language,
 		}
 
-		// extract licence info
-		// licence can be null or empty for some repositories
+		// Extract license information.
+		// The license field can be null or empty for some repositories,
 		if r.License != nil {
-			repositoryAggregated.Licence = r.License.GetKey()
+			repositoryAggregated.License = r.License.GetKey()
 		}
 
 		repositoriesAggregated = append(repositoriesAggregated, repositoryAggregated)
 	}
 
-	// count number of repositories where the languages are available for loading
-	// if there is not enought request on rate limiter to load all of them, return an error here
-	// this avoid to load the languages not completly
+	// Count the number of repositories that have languages available for loading.
+	// If the rate limiter doesn't have enough available requests to load all languages,
+	// return an error to prevent partially loading the data. This ensures that
+	// language data is either fully loaded or not loaded at all, maintaining consistency.
 	reposWithLanguagesToLoad := 0
 
 	for _, r := range repositoriesAggregated {
@@ -112,8 +114,9 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 		}
 	}
 
-	// rate limit check: consume tokens/requests for each repo that we need to load languages from
-	// if there is not enought requests, return an error to avoid loading for only a part of repositories
+	// Rate limit check: consume tokens for each repository that requires language loading.
+	// If there are not enough available requests, return an error to prevent
+	// loading data for only a subset of repositories.
 	if !s.githubRateLimiter.AllowN(time.Now(), reposWithLanguagesToLoad) {
 		log.WithField("repositoriesToLoad", reposWithLanguagesToLoad).Warning("not enought requests in rate limiter to load languages for all repositories")
 		return []model.GithubRepository{}, fmt.Errorf("RATE_LIMIT_REACHED")
@@ -123,7 +126,7 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 		"numberOfRepositories": reposWithLanguagesToLoad,
 	}).Debug("will load languages from all repositories found with main language available")
 
-	// aggregate and fetch the languages used for each repo using goroutines
+	// Aggregate and fetch the languages used in each repository concurrently using goroutines.
 	repositoriesAggregated, err = s.GetRepositoriesLanguages(repositoriesAggregated)
 
 	if err != nil {
@@ -134,25 +137,21 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 	return repositoriesAggregated, nil
 }
 
-// getRepositoriesLanguages will fetch the languages used for each repository in parameters
-// this function use wait groups to parallelize the requests for each repository
+// GetRepositoriesLanguages fetches the languages used by each repository provided in the input parameters.
+// This function employs wait groups to parallelize API requests for each repository,
 func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) ([]model.GithubRepository, error) {
-
-	// create a group to wait for all goroutines to finish
 	swg := sizedwaitgroup.New(s.config.Tasks.MaxParallelTasksAllowed)
 
-	// create a channel to collect response for all repositories in an map
-	// the map contain the repository ID as key and languages as value
-	// we will assign together when all tasks are finished
+	// Create a channel to collect responses from all repositories.
+	// The responses will be stored in a map with repository IDs as keys and their corresponding languages as values.
+	// This map will be populated once all concurrent tasks have completed.
 	results := make(chan model.GithubRepositoryLanguages, len(repos))
 
 	for _, r := range repos {
 
-		// to avoid to many requests for nothing
-		// check if the main language (most used) is available for the repo
-		// if yes, it means at least one language can be found using ListLanguages
-		// if not, the ListLanguages willl return nil (or empty) and we can avoid executing the request
-		// this will save some requests regarding to the rate limit
+		// To prevent unnecessary API requests, check if the main language (most used) is available for the repository.
+		// If a main language is present, it indicates that at least one language can be retrieved using ListLanguages.
+		// If not, calling ListLanguages will return nil or an empty result, allowing us to skip the request
 		if r.MostUsedLanguage == nil {
 			log.WithFields(log.Fields{
 				"repositoryID": r.ID,
@@ -165,17 +164,16 @@ func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) 
 		}
 	}
 
-	// wait for all tasks to be finished
+	// Wait for all tasks to be finished
 	log.Debug("waiting for all threads for loading repositories to be finished")
 	swg.Wait()
 	log.Debug("all threads for loading repositories languages finished")
 
-	// close the channel
+	// Close the channel
 	close(results)
 
-	// associate languages with repositories
-	// I guess is better to use an array of GithubRepositoryLanguages
-	// rather than chan of map directly (even if it require to create an intermediate map here)
+	// It is preferable to use an array instead of directly using a channel of maps.
+	// Although this approach requires creating an intermediate map, it provides a clearer and more structured representation
 	langMap := make(map[int64]map[string]int)
 	for result := range results {
 		langMap[result.RepositoryID] = result.Languages
@@ -190,10 +188,9 @@ func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) 
 	return repos, nil
 }
 
-// FetchLanguagesForSingleRepository get the languages for a specific repository
-// It will add the results to a channel and use a goroutine
-// note: we are not checking the rate limit in this function, because done in the parent function
-// note: take care if you call this function from another function
+// FetchLanguagesForSingleRepository retrieves the languages for a specific repository.
+// The results are sent to a channel and processed in a separate goroutine.
+// Note: Rate limiting is not checked within this function, as it is handled in the parent function.
 func (s githubService) FetchLanguagesForSingleRepository(r model.GithubRepository, swg *sizedwaitgroup.SizedWaitGroup, ch chan<- model.GithubRepositoryLanguages) error {
 	defer swg.Done()
 
@@ -216,9 +213,8 @@ func (s githubService) FetchLanguagesForSingleRepository(r model.GithubRepositor
 	return nil
 }
 
-// HandleRequestErrors manage errors including github rate limit errors at the same location
-// If error is a rate limit error, this function will update the local rate limiter to consume all available requests
-// this can help us to keep the local rate limiter up to date
+// HandleRequestErrors manages various errors, including GitHub rate limit errors
+// If a rate limit error occurs, this function updates the local rate limiter to consume all available requests,
 func (s githubService) HandleRequestErrors(err error) error {
 	if _, ok := err.(*github.RateLimitError); ok {
 		if !s.githubRateLimiter.AllowN(time.Now(), s.githubRateLimiter.Burst()) {

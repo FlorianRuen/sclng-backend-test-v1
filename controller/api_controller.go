@@ -11,6 +11,7 @@ import (
 )
 
 type APIController interface {
+	PingHandler(c *gin.Context)
 	GetRepositories(ctx *gin.Context)
 }
 
@@ -24,6 +25,10 @@ func NewAPIController(config config.Config, service service.GithubService) APICo
 		githubService: service,
 		config:        config,
 	}
+}
+
+func (s apiController) PingHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "pong"})
 }
 
 func (s apiController) GetRepositories(c *gin.Context) {

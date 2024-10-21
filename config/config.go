@@ -73,7 +73,7 @@ func GetDefault() *Config {
 			Token: "",
 		},
 		Tasks: TasksConfig{
-			MaxParallelTasksAllowed: 8,
+			MaxParallelTasksAllowed: 20,
 		},
 		Logs: LogsConfig{
 			Level:            "debug",

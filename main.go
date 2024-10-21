@@ -83,6 +83,7 @@ func main() {
 
 	api := router.Group("")
 	{
+		api.GET("/ping", apiController.PingHandler)
 		api.GET("/repos", apiController.GetRepositories)
 	}
 

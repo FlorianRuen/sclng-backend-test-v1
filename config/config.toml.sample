@@ -5,8 +5,15 @@
 
 [TASKS]
     # Number of tasks allowed in same time when fetching repository languages
-    # Default value = 8
-    # MaxParallelTasksAllowed = 8
+    # Default value = 20
+    # MaxParallelTasksAllowed = 20
+
+[GITHUB]
+    # Github token to increase the rate limit for API requests
+    # Non authenticated requests = 60 calls / hour
+    # Authenticated requests = 5000 calls / hour
+    # Default value = ""
+    # Token = ""
 
 [LOGS]
     # Specific for application logs
