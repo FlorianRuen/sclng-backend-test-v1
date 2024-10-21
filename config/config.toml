@@ -1,9 +1,0 @@
-[API]
-    ListenPort = 5000
-    
-[TASKS]
-    MaxParallelTasksAllowed = 8
-
-[LOGS]
-    Level = "debug"
-    OutputLogsAsJson = false

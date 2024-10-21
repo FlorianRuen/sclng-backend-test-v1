@@ -10,9 +10,10 @@ import (
 
 // config structure
 type Config struct {
-	API   APIConfig   `mapstructure:"API"`
-	Tasks TasksConfig `mapstructure:"TASKS"`
-	Logs  LogsConfig  `mapstructure:"LOGS"`
+	API    APIConfig    `mapstructure:"API"`
+	Github GithubConfig `mapstructure:"GITHUB"`
+	Tasks  TasksConfig  `mapstructure:"TASKS"`
+	Logs   LogsConfig   `mapstructure:"LOGS"`
 }
 
 type APIConfig struct {
@@ -21,6 +22,10 @@ type APIConfig struct {
 
 type TasksConfig struct {
 	MaxParallelTasksAllowed int `mapstructure:"MaxParallelTasksAllowed"`
+}
+
+type GithubConfig struct {
+	Token string `mapstructure:"Token"`
 }
 
 type LogsConfig struct {
@@ -63,6 +68,9 @@ func GetDefault() *Config {
 	return &Config{
 		API: APIConfig{
 			ListenPort: "5000",
+		},
+		Github: GithubConfig{
+			Token: "",
 		},
 		Tasks: TasksConfig{
 			MaxParallelTasksAllowed: 8,
