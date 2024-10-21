@@ -34,36 +34,7 @@ type githubService struct {
 // but the search limit is higher, so we limit to the ListLanguages
 // ListLanguages rate limit = 60 calls per hour for non-authenticated and 5000 calls for authenticated
 // Search = 30 calls per minute = 1800 calls per hour
-func NewGithubService(config config.Config) GithubService {
-	githubClient := github.NewClient(nil)
-
-	if config.Github.Token != "" {
-		log.Debug("will setup github client with authorization token")
-		githubClient = githubClient.WithAuthToken(config.Github.Token)
-	}
-
-	// execute request to get the rate limit available. We will configure a local rate limiter
-	log.Debug("loading current rate limit from github")
-	rateLimits, _, err := githubClient.RateLimit.Get(context.Background())
-	if err != nil {
-		log.WithError(err).Panic("unable to load current github rate limits")
-	}
-
-	log.WithFields(log.Fields{
-		"totalAvailable":    rateLimits.Core.Limit,
-		"remainingRequests": rateLimits.Core.Remaining,
-		"resetOn":           rateLimits.Core.Reset,
-	}).Debug("will setup local rate limiter with rate limits infos from github")
-
-	// setup rate limiter
-	// consume X tokens according to the number of remaining tokens
-	// this help us to have a right rate limiter even if external requests are made
-	rateLimiter := rate.NewLimiter(rate.Every(time.Hour), rateLimits.Core.Limit)
-
-	if !rateLimiter.AllowN(time.Now(), rateLimits.Core.Limit-rateLimits.Core.Remaining) {
-		log.WithError(err).Panic("unable to configure the github rate limiter")
-	}
-
+func NewGithubService(config config.Config, githubClient *github.Client, rateLimiter *rate.Limiter) GithubService {
 	return githubService{
 		githubClient:      githubClient,
 		githubRateLimiter: rateLimiter,
@@ -108,7 +79,7 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 
 	for _, r := range repos.Repositories {
 
-		if r == nil || r.FullName == nil || r.Owner == nil || r.Owner.Login == nil || r.Name == nil || r.LanguagesURL == nil {
+		if r == nil || r.FullName == nil || r.Owner == nil || r.Owner.Login == nil || r.Name == nil {
 			log.WithFields(log.Fields{
 				"repositoryID": r.ID,
 			}).Debug("repository found with invalid information. skipped")

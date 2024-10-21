@@ -14,7 +14,9 @@ import (
 	"github.com/Scalingo/sclng-backend-test-v1/service"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/google/go-github/v66/github"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 )
 
 func main() {
@@ -26,8 +28,39 @@ func main() {
 	// configure logger
 	logger.Setup(*cfg)
 
+	// setup github client
+	// we do here and pass the client to Github service to easily improve tests with mock client
+	githubClient := github.NewClient(nil)
+
+	if cfg.Github.Token != "" {
+		log.Debug("will setup github client with authorization token")
+		githubClient = githubClient.WithAuthToken(cfg.Github.Token)
+	}
+
+	// setup local rate limiter
+	// execute first request to github to fetch current rate limits
+	log.Debug("loading current rate limit from github")
+	rateLimits, _, err := githubClient.RateLimit.Get(context.Background())
+	if err != nil {
+		log.WithError(err).Panic("unable to load current github rate limits")
+	}
+
+	log.WithFields(log.Fields{
+		"totalAvailable":    rateLimits.Core.Limit,
+		"remainingRequests": rateLimits.Core.Remaining,
+	}).Debug("will setup local rate limiter with rate limits infos from github")
+
+	// setup rate limiter
+	// consume X tokens according to the number of remaining tokens
+	// this help us to have a right rate limiter even if external requests are made
+	rateLimiter := rate.NewLimiter(rate.Every(time.Hour), rateLimits.Core.Limit)
+
+	if !rateLimiter.AllowN(time.Now(), rateLimits.Core.Limit-rateLimits.Core.Remaining) {
+		log.WithError(err).Panic("unable to configure the github rate limiter")
+	}
+
 	// setup handlers and services
-	githubService := service.NewGithubService(*cfg)
+	githubService := service.NewGithubService(*cfg, githubClient, rateLimiter)
 	apiController := controller.NewApiController(*cfg, githubService)
 
 	// setup server and define all routes
