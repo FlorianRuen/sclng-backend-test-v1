@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/Scalingo/sclng-backend-test-v1/config"
 	"github.com/Scalingo/sclng-backend-test-v1/model"
@@ -35,6 +36,11 @@ func (s apiController) GetRepositories(c *gin.Context) {
 	// execute the request
 	repos, err := s.githubService.FetchLastHundredRepositories(c, searchQuery)
 	if err != nil {
+		if strings.Contains(err.Error(), "RATE_LIMIT_REACHED") {
+			c.JSON(http.StatusTooManyRequests, model.NewAPIError(err))
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, model.NewAPIError(err))
 		return
 	}

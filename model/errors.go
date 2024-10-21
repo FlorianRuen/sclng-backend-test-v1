@@ -1,18 +1,35 @@
 package model
 
 type APIError struct {
-	Reason  string `json:"reason"`
+	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
-func NewAPIError(err error) APIError {
-	
-	switch(err.Error()) {
-	case "rate limit reached":
+func NewAPIError(errReason error) APIError {
+	switch errReason.Error() {
+	case "RATE_LIMIT_REACHED":
+		return APIError{
+			Code:    "RATE_LIMIT_REACHED",
+			Message: "github rate limit reached. consider using a token to increase the limit or wait few minutes and try again",
+		}
 
+	case "RATE_LIMITER_ERROR":
+	case "INVALID_DATA_FOUND":
+	case "FETCH_ERROR":
+		return APIError{
+			Code:    errReason.Error(),
+			Message: "internal server error. contact our support with the reason code for assistance",
+		}
+
+	default:
+		return APIError{
+			Code:    errReason.Error(),
+			Message: "internal server error. contact our support with the reason code for assistance",
+		}
 	}
+
 	return APIError{
-		Reason:  "",
-		Message: err.Error(),
+		Code:    "GENERIC_ERROR",
+		Message: "internal server error. contact our support with the reason code for assistance",
 	}
 }

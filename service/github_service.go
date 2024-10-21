@@ -73,9 +73,8 @@ func NewGithubService(config config.Config) GithubService {
 
 func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery model.SearchQuery) ([]model.GithubRepository, error) {
 	if !s.githubRateLimiter.Allow() {
-		err := fmt.Errorf("rate limit reached, please retry later.")
-		log.WithError(err).Warning("the Github rate limit has been reached. Use a token or wait until the limit reset")
-		return []model.GithubRepository{}, err
+		log.Warning("the Github rate limit has been reached. Use a token or wait until the limit reset")
+		return []model.GithubRepository{}, fmt.Errorf("RATE_LIMIT_REACHED")
 	}
 
 	log.WithFields(log.Fields{
@@ -101,7 +100,7 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 	)
 
 	if err != nil {
-		return []model.GithubRepository{}, s.HandleRequestErrors(err)
+		return []model.GithubRepository{}, fmt.Errorf("FETCH_ERROR")
 	}
 
 	// build output format for each repo
@@ -114,7 +113,7 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 				"repositoryID": r.ID,
 			}).Debug("repository found with invalid information. skipped")
 
-			return []model.GithubRepository{}, fmt.Errorf("invalid repository found")
+			return []model.GithubRepository{}, fmt.Errorf("INVALID_DATA_FOUND")
 		}
 
 		repositoryAggregated := model.GithubRepository{
@@ -149,7 +148,7 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 	// if there is not enought requests, return an error to avoid loading for only a part of repositories
 	if !s.githubRateLimiter.AllowN(time.Now(), reposWithLanguagesToLoad) {
 		log.WithField("repositoriesToLoad", reposWithLanguagesToLoad).Warning("not enought requests in rate limiter to load languages for all repositories")
-		return []model.GithubRepository{}, fmt.Errorf("not enought requests to load languages for all repositories")
+		return []model.GithubRepository{}, fmt.Errorf("RATE_LIMIT_REACHED")
 	}
 
 	log.WithFields(log.Fields{
@@ -161,7 +160,7 @@ func (s githubService) FetchLastHundredRepositories(c *gin.Context, seachQuery m
 
 	if err != nil {
 		log.WithError(err).Error("unable to get repositories languages")
-		return []model.GithubRepository{}, err
+		return []model.GithubRepository{}, fmt.Errorf("FETCH_ERROR")
 	}
 
 	return repositoriesAggregated, nil
@@ -255,13 +254,13 @@ func (s githubService) FetchLanguagesForSingleRepository(r model.GithubRepositor
 func (s githubService) HandleRequestErrors(err error) error {
 	if _, ok := err.(*github.RateLimitError); ok {
 		if !s.githubRateLimiter.AllowN(time.Now(), s.githubRateLimiter.Burst()) {
-			return fmt.Errorf("failed to consume all tokens")
+			return fmt.Errorf("RATE_LIMITER_ERROR")
 		}
 
-		log.WithError(err).Warning("github rate limit reached")
-		return err
+		log.Warning("the Github rate limit has been reached. Use a token or wait until the limit reset")
+		return fmt.Errorf("RATE_LIMIT_REACHED")
 	}
 
-	log.WithError(err).Error("unable to get repositories languages")
-	return err
+	log.WithError(err).Error("error catched when fetching data from github")
+	return fmt.Errorf("FETCH_ERROR")
 }
