@@ -1,4 +1,4 @@
-FROM golang:1.20
+FROM golang:1.22
 LABEL maintainer="Infrastructure Services Team <team-infrastructure-services@scalingo.com>"
 
 RUN go install github.com/cespare/reflex@latest

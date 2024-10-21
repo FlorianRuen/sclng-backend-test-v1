@@ -165,6 +165,7 @@ make help
 
 I enjoyed working on this test, thank you! Here are some observations:
 
+- I updated the version of Go used in docker, so that some instructions specific to go 1.21/1.22 (notably toolchain) can work
 - The retrieval of the last 100 repositories on GitHub does not always appear sorted correctly, even with the provided parameters. Using the Events API call might yield better results, though care must be taken regarding API consumption and rate limits.
 - A Size WaitGroup was used to effectively manage concurrent tasks.
 - No database was implemented, as I believe the responsibility of data management should lie with the applications consuming this API. Implementing a database would necessitate handling the frequent updates of information from GitHub.
