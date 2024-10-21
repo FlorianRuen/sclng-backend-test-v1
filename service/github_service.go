@@ -160,7 +160,16 @@ func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) 
 			results <- model.GithubRepositoryLanguages{RepositoryID: r.ID, Languages: map[string]int{}}
 		} else {
 			swg.Add()
-			go s.FetchLanguagesForSingleRepository(r, &swg, results)
+
+			go func(repo model.GithubRepository) {
+				defer swg.Done()
+				err := s.FetchLanguagesForSingleRepository(repo, &swg, results)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"repositoryID": repo.ID,
+					}).WithError(err).Error("unable to fetch languages for specific repository")
+				}
+			}(r)
 		}
 	}
 
@@ -192,8 +201,6 @@ func (s githubService) GetRepositoriesLanguages(repos []model.GithubRepository) 
 // The results are sent to a channel and processed in a separate goroutine.
 // Note: Rate limiting is not checked within this function, as it is handled in the parent function.
 func (s githubService) FetchLanguagesForSingleRepository(r model.GithubRepository, swg *sizedwaitgroup.SizedWaitGroup, ch chan<- model.GithubRepositoryLanguages) error {
-	defer swg.Done()
-
 	log.WithFields(log.Fields{
 		"repositoryID":     r.ID,
 		"mostUsedLanguage": r.MostUsedLanguage,

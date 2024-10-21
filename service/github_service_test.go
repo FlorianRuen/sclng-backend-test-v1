@@ -153,13 +153,21 @@ func TestFetchLastHundredRepositories(t *testing.T) {
 				githubMock.WithRequestMatchHandler(
 					githubMock.GetSearchRepositories,
 					http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-						w.Write(githubMock.MustMarshal(tt.mockResponseRepositories))
+						_, err := w.Write(githubMock.MustMarshal(tt.mockResponseRepositories))
+
+						if err != nil {
+							t.Error("unable to configure mock http client")
+						}
 					}),
 				),
 				githubMock.WithRequestMatchHandler(
 					githubMock.GetReposLanguagesByOwnerByRepo,
 					http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-						w.Write(githubMock.MustMarshal(tt.mockResponseLanguages))
+						_, err := w.Write(githubMock.MustMarshal(tt.mockResponseLanguages))
+
+						if err != nil {
+							t.Error("unable to configure mock http client")
+						}
 					}),
 				),
 			)
@@ -217,7 +225,11 @@ func TestFetchLanguagesForSingleRepository(t *testing.T) {
 				githubMock.WithRequestMatchHandler(
 					githubMock.GetReposLanguagesByOwnerByRepo,
 					http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-						w.Write(githubMock.MustMarshal(tt.mockResponse))
+						_, err := w.Write(githubMock.MustMarshal(tt.mockResponse))
+
+						if err != nil {
+							t.Error("unable to configure mock http client")
+						}
 					}),
 				),
 			)
@@ -301,7 +313,11 @@ func TestGetRepositoriesLanguages(t *testing.T) {
 				githubMock.WithRequestMatchHandler(
 					githubMock.GetReposLanguagesByOwnerByRepo,
 					http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-						w.Write(githubMock.MustMarshal(tt.mockGithubResponseLanguages))
+						_, err := w.Write(githubMock.MustMarshal(tt.mockGithubResponseLanguages))
+
+						if err != nil {
+							t.Error("unable to configure mock http client")
+						}
 					}),
 				),
 			)
