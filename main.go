@@ -61,7 +61,7 @@ func main() {
 
 	// setup handlers and services
 	githubService := service.NewGithubService(*cfg, githubClient, rateLimiter)
-	apiController := controller.NewApiController(*cfg, githubService)
+	apiController := controller.NewAPIController(*cfg, githubService)
 
 	// setup server and define all routes
 	gin.SetMode(gin.ReleaseMode)

@@ -1,2 +1,4 @@
 sclng-backend-test-v1
 config/config.toml
+tmp/
+bin/

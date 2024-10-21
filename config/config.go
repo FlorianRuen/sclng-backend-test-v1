@@ -8,7 +8,7 @@ import (
 	"github.com/CIDgravity/snakelet"
 )
 
-// config structure
+// Config will store the application config from config.toml file
 type Config struct {
 	API    APIConfig    `mapstructure:"API"`
 	Github GithubConfig `mapstructure:"GITHUB"`
@@ -30,10 +30,10 @@ type GithubConfig struct {
 
 type LogsConfig struct {
 	Level            string `mapstructure:"Level"` // error | warn | info - case insensitive
-	OutputLogsAsJson bool   `mapstructure:"OutputLogsAsJson"`
+	OutputLogsAsJSON bool   `mapstructure:"OutputLogsAsJSON"`
 }
 
-// Load
+// Load will open and parse config.toml content to Config struct instance
 func Load() (*Config, error) {
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 
@@ -63,7 +63,7 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// GetDefault
+// GetDefault will convert a string to a valid Logrus level
 func GetDefault() *Config {
 	return &Config{
 		API: APIConfig{
@@ -77,7 +77,7 @@ func GetDefault() *Config {
 		},
 		Logs: LogsConfig{
 			Level:            "debug",
-			OutputLogsAsJson: false,
+			OutputLogsAsJSON: false,
 		},
 	}
 }

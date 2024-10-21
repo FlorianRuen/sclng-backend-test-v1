@@ -7,20 +7,20 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// SetupLogger will configure logrus logger
+// Setup will configure logrus logger
 func Setup(cfg config.Config) {
 	logrus.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp: true,
 	})
 
-	if cfg.Logs.OutputLogsAsJson {
+	if cfg.Logs.OutputLogsAsJSON {
 		logrus.SetFormatter(&logrus.JSONFormatter{})
 	}
 
 	logrus.SetLevel(StringToLogrusLogType(cfg.Logs.Level))
 }
 
-// SetupLogger will convert string to the right logrus level
+// StringToLogrusLogType will convert string to the right logrus level
 func StringToLogrusLogType(logLevel string) logrus.Level {
 	logLevelLowerCase := strings.ToLower(logLevel)
 	switch logLevelLowerCase {

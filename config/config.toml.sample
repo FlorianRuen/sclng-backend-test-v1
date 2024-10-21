@@ -16,4 +16,4 @@
 
     # Display every logs in JSON format, useful when using a log parser such as Loki
     # Default value = false
-    # OutputLogsAsJson = false
+    # OutputLogsAsJSON = false

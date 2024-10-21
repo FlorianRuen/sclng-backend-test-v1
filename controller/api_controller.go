@@ -19,7 +19,7 @@ type apiController struct {
 	config        config.Config
 }
 
-func NewApiController(config config.Config, service service.GithubService) APIController {
+func NewAPIController(config config.Config, service service.GithubService) APIController {
 	return apiController{
 		githubService: service,
 		config:        config,

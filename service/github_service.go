@@ -30,10 +30,7 @@ type githubService struct {
 	config            config.Config
 }
 
-// we have two github request with different rate limit
-// but the search limit is higher, so we limit to the ListLanguages
-// ListLanguages rate limit = 60 calls per hour for non-authenticated and 5000 calls for authenticated
-// Search = 30 calls per minute = 1800 calls per hour
+// NewGithubService will create an instance of GithubService
 func NewGithubService(config config.Config, githubClient *github.Client, rateLimiter *rate.Limiter) GithubService {
 	return githubService{
 		githubClient:      githubClient,
